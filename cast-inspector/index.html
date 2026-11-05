@@ -126,12 +126,12 @@
       <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-4">
         <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
           <input type="checkbox" id="onlyEmptyToggle" class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer">
-          <span><i class="fa-solid fa-triangle-exclamation text-rose-500 mr-1"></i> Sadece Boş Kadrolar (Only Empty Cast)</span>
+          <span><i class="fa-solid fa-triangle-exclamation text-rose-500 mr-1"></i> Only Empty Cast</span>
         </label>
         
         <label class="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
           <input type="checkbox" id="onlyMissingPhotosToggle" class="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer">
-          <span><i class="fa-solid fa-image text-amber-500 mr-1"></i> Resim Eksik Olanlar (Missing Photos)</span>
+          <span><i class="fa-solid fa-image text-amber-500 mr-1"></i> Missing Photos</span>
         </label>
       </div>
     </div>
@@ -155,6 +155,41 @@
           <i class="fa-solid fa-file-export"></i> Export Issue List
         </button>
       </div>
+    </div>
+
+    <!-- MDL CAST IMPORTER -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6">
+      <h3 class="font-bold text-slate-800 text-base mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-table-list text-indigo-600"></i> MDL Cast Importer
+      </h3>
+
+      <div class="mb-4">
+        <label for="mdlCastUrl" class="block text-xs font-semibold text-slate-600 mb-1">MyDramaList Cast URL</label>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input type="url" id="mdlCastUrl" value="https://mydramalist.com/52301-art-on/cast"
+            placeholder="https://mydramalist.com/52301-art-on/cast"
+            class="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500" />
+          <button type="button" onclick="loadMdlCastList()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 shadow-sm">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Load Cast Table
+          </button>
+        </div>
+        <p id="mdlCastStatus" class="text-[11px] text-slate-400 mt-1">Paste an MDL cast URL and load the actor / character table.</p>
+      </div>
+
+      <div id="mdlCastTableWrapper" class="hidden overflow-x-auto mb-4 border border-slate-200 rounded-lg">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th class="px-3 py-2 w-10"><input type="checkbox" id="mdlCastSelectAll" checked class="accent-indigo-600" aria-label="Select all cast rows" /></th>
+              <th class="px-3 py-2 text-xs font-semibold text-slate-600">Actor</th>
+              <th class="px-3 py-2 text-xs font-semibold text-slate-600">Character</th>
+              <th class="px-3 py-2 text-xs font-semibold text-slate-600">Role</th>
+            </tr>
+          </thead>
+          <tbody id="mdlCastTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
     </div>
 
     <!-- SHOW CARDS GRID -->
@@ -507,7 +542,14 @@
       const isEmpty = !show.cast || show.cast.length === 0;
       const missingPhotoCount = show.cast ? show.cast.filter(item => !item.character || !item.character.image).length : 0;
       const isChecked = !!checkedShows[safeId];
+      const encodedTitle = encodeURIComponent(show.name);
       const tvmazeUrl = `https://www.tvmaze.com/shows/${safeId}`;
+      const tvdbSearchUrl = `https://www.thetvdb.com/search?query=${encodedTitle}`;
+      const tmdbSearchUrl = `https://www.themoviedb.org/search?query=${encodedTitle}`;
+      const imdbSearchUrl = `https://www.imdb.com/find/?q=${encodedTitle}`;
+      const mdlSearchUrl = `https://mydramalist.com/search?q=${encodedTitle}&adv=titles`;
+      const isAnime = show.type === 'Animation' || (show.genres || []).some(genre => /anime/i.test(genre));
+      const malSearchUrl = `https://myanimelist.net/search/all?q=${encodedTitle}`;
       const posterUrl = show.image?.medium ? escapeHtml(show.image.medium) : 'https://placehold.co/210x295/cbd5e1/475569?text=No+Cover';
 
       let statusBadge = '';
@@ -542,10 +584,15 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 border-t border-slate-100">
               <a href="${escapeHtml(tvmazeUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-emerald-700 font-semibold hover:underline flex items-center gap-1">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> View on TVmaze
               </a>
+              <a href="${escapeHtml(tvdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-700 font-semibold hover:underline">TVDB</a>
+              <a href="${escapeHtml(tmdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-sky-700 font-semibold hover:underline">TMDB</a>
+              <a href="${escapeHtml(imdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-amber-700 font-semibold hover:underline">IMDb</a>
+              ${!isAnime ? `<a href="${escapeHtml(mdlSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-700 font-semibold hover:underline">MDL</a>` : ''}
+              ${isAnime ? `<a href="${escapeHtml(malSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-pink-700 font-semibold hover:underline">MAL</a>` : ''}
               <button 
                 data-copy-url="${escapeHtml(tvmazeUrl)}"
                 class="copy-btn text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg font-medium transition flex items-center gap-1 ml-auto">
@@ -587,6 +634,106 @@
     } catch(e) {}
     
     renderShowCards(loadedShows);
+  }
+
+  function loadMdlCastList() {
+    const input = document.getElementById('mdlCastUrl');
+    const status = document.getElementById('mdlCastStatus');
+    const tableWrapper = document.getElementById('mdlCastTableWrapper');
+    const tableBody = document.getElementById('mdlCastTableBody');
+
+    let mdlUrl;
+    try {
+      mdlUrl = new URL(input.value.trim());
+      if (!/(^|\.)mydramalist\.com$/i.test(mdlUrl.hostname)) throw new Error('invalid-host');
+      if (!mdlUrl.pathname.endsWith('/cast')) {
+        mdlUrl.pathname = `${mdlUrl.pathname.replace(/\/$/, '')}/cast`;
+      }
+    } catch (error) {
+      status.textContent = 'Enter a valid MyDramaList cast URL.';
+      status.className = 'text-[11px] text-rose-500 mt-1';
+      return;
+    }
+
+    status.textContent = 'Loading the MDL cast list...';
+    status.className = 'text-[11px] text-indigo-600 mt-1';
+    tableWrapper.classList.add('hidden');
+    tableBody.innerHTML = '';
+
+    const readerUrl = `https://r.jina.ai/https://${mdlUrl.hostname}${mdlUrl.pathname}${mdlUrl.search}`;
+    fetch(readerUrl)
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then(markdown => {
+        const entries = parseMdlCastMarkdown(markdown);
+        if (entries.length === 0) throw new Error('empty-cast');
+
+        tableBody.innerHTML = entries.map((entry, index) => `
+          <tr class="mdl-cast-row">
+            <td class="px-3 py-2 align-top"><input type="checkbox" class="mdl-cast-select accent-indigo-600" checked aria-label="Select cast row ${index + 1}" /></td>
+            <td class="px-3 py-2"><input type="text" class="mdl-cast-actor w-full border border-slate-200 rounded px-2 py-1 text-sm" value="${escapeHtml(entry.actor)}" /></td>
+            <td class="px-3 py-2"><input type="text" class="mdl-cast-character w-full border border-slate-200 rounded px-2 py-1 text-sm" value="${escapeHtml(entry.character)}" /></td>
+            <td class="px-3 py-2"><input type="text" class="mdl-cast-role w-full border border-slate-200 rounded px-2 py-1 text-sm" value="${escapeHtml(entry.role)}" /></td>
+          </tr>
+        `).join('');
+
+        tableWrapper.classList.remove('hidden');
+        const selectAll = document.getElementById('mdlCastSelectAll');
+        selectAll.checked = true;
+        selectAll.onchange = () => {
+          tableBody.querySelectorAll('.mdl-cast-select').forEach(checkbox => {
+            checkbox.checked = selectAll.checked;
+          });
+        };
+        status.textContent = `${entries.length} cast records loaded into the table.`;
+        status.className = 'text-[11px] text-emerald-600 mt-1';
+      })
+      .catch(error => {
+        console.error('Could not load the MDL cast list:', error);
+        status.textContent = 'Could not load the MDL list. Check the URL and try again.';
+        status.className = 'text-[11px] text-rose-500 mt-1';
+      });
+  }
+
+  function parseMdlCastMarkdown(markdown) {
+    const lines = markdown.split(/\r?\n/).map(line => line.trim());
+    const entries = [];
+    let currentRole = 'Cast';
+
+    for (let index = 0; index < lines.length; index++) {
+      const roleMatch = lines[index].match(/^#{2,4}\s+(Main Role|Support Role|Guest Role|Cameo|Special Appearance)/i);
+      if (roleMatch) {
+        currentRole = roleMatch[1];
+        continue;
+      }
+
+      const actorMatch = lines[index].match(/^(?:\*\s+)?\[\*\*(.+?)\*\*\]\(https?:\/\/mydramalist\.com\/people\//i);
+      if (!actorMatch) continue;
+
+      let character = '';
+      for (let next = index + 1; next < Math.min(index + 7, lines.length); next++) {
+        const candidate = lines[next];
+        if (!candidate || candidate.startsWith('*   [![Image')) continue;
+        if (/^(?:\*\s+)?\[?\*\*.+\*\*\]?\(https?:\/\/mydramalist\.com\/people\//i.test(candidate)) break;
+        if (/^(Main Role|Support Role|Guest Role|Cameo|Special Appearance)$/i.test(candidate)) continue;
+
+        character = candidate
+          .replace(/^\*\s+/, '')
+          .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+          .replace(/\*\*/g, '')
+          .replace(/^\[|\]$/g, '')
+          .trim();
+        if (character) break;
+      }
+
+      if (character) {
+        entries.push({ actor: actorMatch[1].trim(), character, role: currentRole });
+      }
+    }
+
+    return entries;
   }
 
   function handleCopyClick(btn, url) {

@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TVmaze Episode & Summary Auditor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="min-h-full flex flex-col bg-slate-50 text-slate-800">
+
+  <!-- HEADER & CONTROLS -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        
+        <!-- Logo / Title -->
+        <div class="flex items-center gap-3">
+          <div class="bg-purple-600 text-white p-2.5 rounded-xl shadow-sm">
+            <i class="fa-solid fa-film text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-xl font-bold text-slate-900 leading-tight">TVmaze Episode & Summary Auditor</h1>
+            <p class="text-xs text-slate-500 font-medium">Inspect episode titles, summaries, air dates & runtime gaps</p>
+          </div>
+        </div>
+
+        <!-- Back to Hub Button -->
+        <a href="../index.html" class="inline-flex items-center space-x-2 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors border border-slate-200 shadow-sm shrink-0">
+          <i class="fa-solid fa-arrow-left text-xs"></i>
+          <span>Back to Hub</span>
+        </a>
+
+        <!-- Search Bar -->
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <div class="relative w-full md:w-80">
+            <input 
+              type="text" 
+              id="showSearchInput"
+              placeholder="Search show title or TVmaze ID..."
+              class="w-full bg-slate-100 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition"
+              onkeyup="if(event.key === 'Enter') executeShowAudit()"
+            />
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+          </div>
+          <button 
+            onclick="executeShowAudit()"
+            class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition shadow-sm shrink-0">
+            Audit Episodes
+          </button>
+        </div>
+
+      </div>
+
+      <!-- FILTER CONTROLS BAR -->
+      <div class="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
+        <!-- Status Filter Toggle Buttons -->
+        <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button id="filterAll" onclick="setFilter('all')" class="px-3 py-1 text-xs font-bold rounded-lg transition bg-white text-slate-800 shadow-sm">
+            All Episodes
+          </button>
+          <button id="filterMissingSummary" onclick="setFilter('missingSummary')" class="px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800">
+            <i class="fa-solid fa-align-left text-amber-500 mr-1"></i> Missing Summary
+          </button>
+          <button id="filterMissingTitle" onclick="setFilter('missingTitle')" class="px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800">
+            <i class="fa-solid fa-heading text-rose-500 mr-1"></i> Generic Title
+          </button>
+        </div>
+
+        <!-- Language Select -->
+        <div class="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+          <label for="langSelect" class="text-xs font-semibold text-slate-500">Language:</label>
+          <select id="langSelect" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer">
+            <option value="ALL">All Languages</option>
+            <option value="English">English</option>
+            <option value="Turkish">Turkish</option>
+            <option value="Korean">Korean</option>
+            <option value="Japanese">Japanese</option>
+            <option value="Chinese">Chinese</option>
+            <option value="Spanish">Spanish</option>
+          </select>
+        </div>
+
+        <!-- Show Type Select -->
+        <div class="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+          <label for="typeSelect" class="text-xs font-semibold text-slate-500">Type:</label>
+          <select id="typeSelect" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer">
+            <option value="ALL">All Types</option>
+            <option value="Scripted">Scripted</option>
+            <option value="Reality">Reality</option>
+            <option value="Animation">Animation</option>
+            <option value="Documentary">Documentary</option>
+          </select>
+        </div>
+
+        <!-- Release Era Select -->
+        <div class="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+          <label for="yearSelect" class="text-xs font-semibold text-slate-500">Era:</label>
+          <select id="yearSelect" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer">
+            <option value="ALL">All Eras</option>
+            <option value="2020">2020 - Present</option>
+            <option value="2010">2010 - 2019</option>
+            <option value="2000">2000 - 2009</option>
+            <option value="OLDER">1999 & Older</option>
+          </select>
+        </div>
+
+        <!-- Season Selector -->
+        <div class="flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+          <label for="seasonSelect" class="text-xs font-semibold text-slate-500">Season:</label>
+          <select id="seasonSelect" onchange="applySeasonFilter()" class="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer">
+            <option value="ALL">All Seasons</option>
+          </select>
+        </div>
+
+        <!-- Random Audit Button -->
+        <button 
+          onclick="auditRandomShow()"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm ml-auto">
+          <i class="fa-solid fa-dice"></i> Audit Random Show
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full">
+
+    <!-- SHOW OVERVIEW & AUDIT METRICS BANNER -->
+    <div id="showBanner" class="hidden bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-6">
+      <div class="flex flex-col md:flex-row gap-5 items-start">
+        <img id="showPoster" src="" alt="Poster" class="w-28 h-40 object-cover rounded-xl bg-slate-200 shrink-0 shadow-sm" />
+        <div class="flex-1">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <div>
+              <h2 id="showTitle" class="text-2xl font-bold text-slate-900 leading-tight">Show Title</h2>
+              <p id="showMeta" class="text-xs text-slate-500 font-medium">Network • Premiered • Language</p>
+            </div>
+            <a id="tvmazeLink" href="#" target="_blank" rel="noopener noreferrer" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-3 py-1.5 rounded-lg transition hover:bg-emerald-100 flex items-center gap-1.5">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Episode Editor on TVmaze
+            </a>
+          </div>
+
+          <!-- Audit Summary Pills -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-100">
+            <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-xl text-center">
+              <span class="block text-xs font-semibold text-slate-400">Total Episodes</span>
+              <span id="metricTotal" class="text-lg font-extrabold text-slate-800">0</span>
+            </div>
+            <div class="bg-amber-50 border border-amber-200/60 p-3 rounded-xl text-center">
+              <span class="block text-xs font-semibold text-amber-600">Missing Summary</span>
+              <span id="metricMissingSummary" class="text-lg font-extrabold text-amber-700">0</span>
+            </div>
+            <div class="bg-rose-50 border border-rose-200/60 p-3 rounded-xl text-center">
+              <span class="block text-xs font-semibold text-rose-600">Generic / Untitled</span>
+              <span id="metricUntitled" class="text-lg font-extrabold text-rose-700">0</span>
+            </div>
+            <div class="bg-purple-50 border border-purple-200/60 p-3 rounded-xl text-center">
+              <span class="block text-xs font-semibold text-purple-600">Health Score</span>
+              <span id="metricHealth" class="text-lg font-extrabold text-purple-700">100%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EPISODES AUDIT TABLE / LIST -->
+    <div id="episodesContainer" class="space-y-4">
+      <!-- Welcome State -->
+      <div class="col-span-full text-center py-20 bg-white rounded-2xl border border-slate-200">
+        <div class="bg-purple-50 text-purple-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <i class="fa-solid fa-list-check text-2xl"></i>
+        </div>
+        <h2 class="text-lg font-bold text-slate-800 mb-1">Ready to Audit Episode & Summary Data</h2>
+        <p class="text-slate-500 text-xs max-w-md mx-auto mb-6">
+          Search for a drama or click <span class="font-bold text-slate-700">Audit Random Show</span> to check for missing episode summaries, missing air dates, and generic episode names.
+        </p>
+        <button onclick="auditRandomShow()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition inline-flex items-center gap-2">
+          <i class="fa-solid fa-dice"></i> Audit Random Show
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 text-center py-4 text-xs text-slate-500 mt-auto">
+    <p>Data provided by <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener noreferrer" class="underline hover:text-purple-700">TVmaze API</a>. Tool built for episode summary auditing.</p>
+  </footer>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    let currentShow = null;
+    let allEpisodes = [];
+    let activeFilter = 'all';
+
+    async function executeShowAudit() {
+      const query = document.getElementById('showSearchInput').value.trim();
+      if (!query) return;
+
+      showLoadingState(`Searching TVmaze for "${query}"...`);
+
+      try {
+        let showId = query;
+        if (isNaN(query)) {
+          const searchRes = await fetch(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(query)}`);
+          if (!searchRes.ok) throw new Error('Show not found');
+          const showData = await searchRes.json();
+          showId = showData.id;
+        }
+
+        const showRes = await fetch(`https://api.tvmaze.com/shows/${showId}?embed=episodes`);
+        if (!showRes.ok) throw new Error('Could not fetch show details');
+        
+        currentShow = await showRes.json();
+        allEpisodes = currentShow._embedded?.episodes || [];
+
+        renderShowBanner();
+        populateSeasonDropdown();
+        renderEpisodes();
+      } catch (err) {
+        showErrorState("Show or episodes could not be loaded. Please check the title/ID.");
+      }
+    }
+
+    function matchesSelectedLanguage(showLang) {
+      const selectedLang = document.getElementById('langSelect')?.value || 'ALL';
+      if (selectedLang === 'ALL') return true;
+      return (showLang || '').toLowerCase() === selectedLang.toLowerCase();
+    }
+
+    function matchesSelectedType(showType) {
+      const selectedType = document.getElementById('typeSelect')?.value || 'ALL';
+      if (selectedType === 'ALL') return true;
+      return (showType || '').toLowerCase() === selectedType.toLowerCase();
+    }
+
+    function matchesSelectedYear(premieredDate) {
+      const selectedEra = document.getElementById('yearSelect')?.value || 'ALL';
+      if (selectedEra === 'ALL') return true;
+      if (!premieredDate) return false;
+
+      const year = parseInt(premieredDate.substring(0, 4), 10);
+      if (isNaN(year)) return false;
+
+      if (selectedEra === '2020') return year >= 2020;
+      if (selectedEra === '2010') return year >= 2010 && year <= 2019;
+      if (selectedEra === '2000') return year >= 2000 && year <= 2009;
+      if (selectedEra === 'OLDER') return year < 2000;
+      return true;
+    }
+
+    async function auditRandomShow() {
+      showLoadingState("Scanning TVmaze for a random show matching criteria...");
+
+      let foundShow = null;
+      let attempts = 0;
+      const maxAttempts = 15;
+
+      while (!foundShow && attempts < maxAttempts) {
+        attempts++;
+        try {
+          const randomPage = Math.floor(Math.random() * 250);
+          const res = await fetch(`https://api.tvmaze.com/shows?page=${randomPage}`);
+
+          if (res.status === 429) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+
+          if (!res.ok) continue;
+
+          const shows = await res.json();
+          const matchedShows = shows.filter(show =>
+            matchesSelectedLanguage(show.language) &&
+            matchesSelectedType(show.type) &&
+            matchesSelectedYear(show.premiered)
+          );
+
+          if (matchedShows.length > 0) {
+            foundShow = matchedShows[Math.floor(Math.random() * matchedShows.length)];
+          }
+        } catch (error) {
+          console.warn("Random show attempt failed:", error);
+        }
+      }
+
+      if (!foundShow) {
+        showErrorState("No random show matched your filter criteria. Try broadening your filters.");
+        return;
+      }
+
+      document.getElementById('showSearchInput').value = foundShow.id;
+      executeShowAudit();
+    }
+
+    function renderShowBanner() {
+      const banner = document.getElementById('showBanner');
+      banner.classList.remove('hidden');
+
+      const encodedTitle = encodeURIComponent(currentShow.name);
+      const tvmazeUrl = `https://www.tvmaze.com/shows/${currentShow.id}`;
+      const tvdbSearchUrl = `https://www.thetvdb.com/search?query=${encodedTitle}`;
+      const tmdbSearchUrl = `https://www.themoviedb.org/search?query=${encodedTitle}`;
+      const imdbSearchUrl = `https://www.imdb.com/find/?q=${encodedTitle}`;
+      const mdlSearchUrl = `https://mydramalist.com/search?q=${encodedTitle}&adv=titles`;
+      const isAnime = currentShow.type === 'Animation' || (currentShow.genres || []).some(genre => /anime/i.test(genre));
+      const malSearchUrl = `https://myanimelist.net/search/all?q=${encodedTitle}`;
+
+      document.getElementById('showPoster').src = currentShow.image?.medium || 'https://placehold.co/210x295/cbd5e1/475569?text=No+Cover';
+      document.getElementById('showTitle').innerText = currentShow.name;
+      document.getElementById('showMeta').innerText = `${currentShow.network?.name || currentShow.webChannel?.name || 'Unknown Channel'} • ${currentShow.premiered || 'N/A'} • ${currentShow.language || 'Unknown'}`;
+      document.getElementById('tvmazeLink').href = `https://www.tvmaze.com/shows/${currentShow.id}/episodes`;
+
+      const externalLinksHtml = `
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-slate-100">
+          <span class="text-xs font-bold text-slate-500">Cross-Search:</span>
+          <a href="${escapeHtml(tvmazeUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-purple-700 font-semibold hover:underline flex items-center gap-1">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> TVmaze
+          </a>
+          <a href="${escapeHtml(tvdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-700 font-semibold hover:underline">TVDB</a>
+          <a href="${escapeHtml(tmdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-sky-700 font-semibold hover:underline">TMDB</a>
+          <a href="${escapeHtml(imdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-amber-700 font-semibold hover:underline">IMDb</a>
+          ${!isAnime ? `<a href="${escapeHtml(mdlSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-700 font-semibold hover:underline">MDL</a>` : ''}
+          ${isAnime ? `<a href="${escapeHtml(malSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-pink-700 font-semibold hover:underline">MAL</a>` : ''}
+        </div>
+      `;
+
+      let linksContainer = document.getElementById('externalLinksBar');
+      if (!linksContainer) {
+        linksContainer = document.createElement('div');
+        linksContainer.id = 'externalLinksBar';
+        document.querySelector('#showBanner .flex-1').appendChild(linksContainer);
+      }
+      linksContainer.innerHTML = externalLinksHtml;
+
+      // Metrics calculation
+      const total = allEpisodes.length;
+      const missingSummary = allEpisodes.filter(e => !e.summary || e.summary.trim() === '').length;
+      const untitled = allEpisodes.filter(e => !e.name || /^Episode\s+\d+$/i.test(e.name.trim())).length;
+      
+      const health = total > 0 ? Math.round(((total - (missingSummary + untitled)) / total) * 100) : 100;
+
+      document.getElementById('metricTotal').innerText = total;
+      document.getElementById('metricMissingSummary').innerText = missingSummary;
+      document.getElementById('metricUntitled').innerText = untitled;
+      document.getElementById('metricHealth').innerText = `${Math.max(0, health)}%`;
+    }
+
+    function populateSeasonDropdown() {
+      const seasonSelect = document.getElementById('seasonSelect');
+      const seasons = [...new Set(allEpisodes.map(e => e.season))].sort((a,b) => a - b);
+      
+      seasonSelect.innerHTML = `<option value="ALL">All Seasons (${seasons.length})</option>` + 
+        seasons.map(s => `<option value="${s}">Season ${s}</option>`).join('');
+    }
+
+    function setFilter(filter) {
+      activeFilter = filter;
+      ['filterAll', 'filterMissingSummary', 'filterMissingTitle'].forEach(id => {
+        const btn = document.getElementById(id);
+        btn.className = 'px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800';
+      });
+
+      if (filter === 'all') document.getElementById('filterAll').className = 'px-3 py-1 text-xs font-bold rounded-lg transition bg-white text-slate-800 shadow-sm';
+      if (filter === 'missingSummary') document.getElementById('filterMissingSummary').className = 'px-3 py-1 text-xs font-bold rounded-lg transition bg-white text-slate-800 shadow-sm';
+      if (filter === 'missingTitle') document.getElementById('filterMissingTitle').className = 'px-3 py-1 text-xs font-bold rounded-lg transition bg-white text-slate-800 shadow-sm';
+
+      renderEpisodes();
+    }
+
+    function applySeasonFilter() {
+      renderEpisodes();
+    }
+
+    function renderEpisodes() {
+      const container = document.getElementById('episodesContainer');
+      const selectedSeason = document.getElementById('seasonSelect').value;
+
+      let filtered = allEpisodes.filter(ep => {
+        if (selectedSeason !== 'ALL' && ep.season !== parseInt(selectedSeason, 10)) return false;
+        if (activeFilter === 'missingSummary' && (ep.summary && ep.summary.trim() !== '')) return false;
+        if (activeFilter === 'missingTitle' && ep.name && !/^Episode\s+\d+$/i.test(ep.name.trim())) return false;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400">
+            <i class="fa-solid fa-circle-check text-3xl mb-2 text-emerald-500"></i>
+            <p class="text-sm font-medium text-slate-600">No episode issues found matching current filters!</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
+                <tr>
+                  <th class="px-4 py-3 w-16">Ep #</th>
+                  <th class="px-4 py-3">Episode Title</th>
+                  <th class="px-4 py-3 w-32">Air Date</th>
+                  <th class="px-4 py-3">Summary Status</th>
+                  <th class="px-4 py-3 w-28 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${filtered.map(ep => {
+                  const hasSummary = ep.summary && ep.summary.trim() !== '';
+                  const isUntitled = !ep.name || /^Episode\s+\d+$/i.test(ep.name.trim());
+                  const cleanSummary = hasSummary ? ep.summary.replace(/<[^>]*>?/gm, '') : 'No summary provided.';
+
+                  return `
+                    <tr class="hover:bg-slate-50/80 transition">
+                      <td class="px-4 py-3 font-bold text-slate-700">S${ep.season}E${ep.number}</td>
+                      <td class="px-4 py-3 font-semibold ${isUntitled ? 'text-rose-600' : 'text-slate-900'}">
+                        ${escapeHtml(ep.name)}
+                        ${isUntitled ? '<span class="ml-2 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">Generic Title</span>' : ''}
+                      </td>
+                      <td class="px-4 py-3 text-xs text-slate-500 font-medium">${ep.airdate || 'Missing Date'}</td>
+                      <td class="px-4 py-3 text-xs">
+                        ${hasSummary 
+                          ? `<p class="text-slate-600 line-clamp-2">${escapeHtml(cleanSummary)}</p>` 
+                          : `<span class="text-amber-600 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded font-semibold inline-block"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Missing Summary</span>`}
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <a href="https://www.tvmaze.com/episodes/${ep.id}/edit" target="_blank" rel="noopener noreferrer" class="text-xs bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold px-2.5 py-1 rounded-lg transition inline-flex items-center gap-1">
+                          Edit <i class="fa-solid fa-pen text-[10px]"></i>
+                        </a>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function showLoadingState(msg) {
+      document.getElementById('episodesContainer').innerHTML = `
+        <div class="text-center py-16 bg-white rounded-2xl border border-slate-200">
+          <i class="fa-solid fa-circle-notch fa-spin text-3xl text-purple-600 mb-3"></i>
+          <p class="text-slate-600 font-medium text-sm">${escapeHtml(msg)}</p>
+        </div>
+      `;
+    }
+
+    function showErrorState(msg) {
+      document.getElementById('episodesContainer').innerHTML = `
+        <div class="text-center py-16 bg-white rounded-2xl border border-slate-200 text-rose-500">
+          <i class="fa-solid fa-triangle-exclamation text-3xl mb-2"></i>
+          <p class="text-sm font-medium">${escapeHtml(msg)}</p>
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

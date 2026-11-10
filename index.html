@@ -84,27 +84,28 @@
                 </a>
             </div>
 
-            <!-- Tool Card 2: Future Module (Episode Auditor) -->
-            <div class="glass-card rounded-2xl p-6 transition-all duration-300 flex flex-col justify-between opacity-75 hover:opacity-100">
+            <!-- Tool Card 2: Episode & Summary Auditor (Active Tool) -->
+            <div class="glass-card rounded-2xl p-6 transition-all duration-300 flex flex-col justify-between group">
                 <div>
                     <div class="flex items-center justify-between mb-4">
-                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center text-2xl">
+                        <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center text-2xl group-hover:bg-purple-600 group-hover:text-white transition-all">
                             <i class="fa-solid fa-film"></i>
                         </div>
-                        <span class="px-2.5 py-1 text-xs font-medium text-amber-400 bg-amber-500/10 rounded-md border border-amber-500/20">
-                            Planned
+                        <span class="px-2.5 py-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 rounded-md border border-emerald-500/20">
+                            Active / Ready
                         </span>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-2">
+                    <h3 class="text-xl font-bold text-white mb-2 group-hover:text-purple-400 transition-colors">
                         Episode & Summary Auditor
                     </h3>
                     <p class="text-slate-400 text-sm leading-relaxed mb-6">
-                        Audit missing episode summaries, air dates, and season numbering issues across target show entries.
+                        Audit missing episode summaries, air dates, and generic episode titles. Cross-search TVDB, TMDB, IMDb & MDL.
                     </p>
                 </div>
-                <button disabled class="w-full py-3 px-4 rounded-xl bg-slate-800 text-slate-500 font-medium text-sm text-center cursor-not-allowed flex items-center justify-center space-x-2">
-                    <span>In Development</span>
-                </button>
+                <a href="./episode-auditor/index.html" class="w-full py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-medium text-sm text-center transition-colors flex items-center justify-center space-x-2 shadow-lg shadow-purple-600/20">
+                    <span>Launch Tool</span>
+                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                </a>
             </div>
 
             <!-- Tool Card 3: Future Module (Pinyin

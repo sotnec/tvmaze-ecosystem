@@ -166,8 +166,8 @@
       <div class="mb-4">
         <label for="mdlCastUrl" class="block text-xs font-semibold text-slate-600 mb-1">MyDramaList Cast URL</label>
         <div class="flex flex-col sm:flex-row gap-2">
-          <input type="url" id="mdlCastUrl" value="https://mydramalist.com/.../cast"
-            placeholder="https://mydramalist.com/.../cast"
+          <input type="url" id="mdlCastUrl" value="https://mydramalist.com/52301-art-on/cast"
+            placeholder="https://mydramalist.com/52301-art-on/cast"
             class="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500" />
           <button type="button" onclick="loadMdlCastList()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 shadow-sm">
             <i class="fa-solid fa-cloud-arrow-down"></i> Load Cast Table
@@ -192,6 +192,40 @@
 
     </div>
 
+    <!-- CAST INSPECTOR -->
+    <section id="showBanner" class="hidden mt-4 pt-4 border-t border-slate-100">
+      <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <img id="showPoster" src="" alt="Poster" class="w-12 h-16 object-cover rounded-lg shadow-sm bg-slate-200 shrink-0" />
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 id="showTitle" class="font-bold text-slate-900 text-base">Show Title</h2>
+              <div id="showExternalLinks" class="flex items-center gap-2 text-xs font-semibold"></div>
+            </div>
+            <p id="showMeta" class="text-xs text-slate-500 font-medium mt-0.5">Network • Premiered</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div class="bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 flex items-center gap-2">
+            <span>Total: <strong id="statTotal" class="text-slate-900">0</strong></span>
+            <span class="text-slate-300">|</span>
+            <span class="text-rose-600 font-bold">Missing Image: <strong id="statMissing">0</strong></span>
+          </div>
+
+          <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button onclick="setFilter('all')" id="filterBtnAll" class="px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-sm transition">All Cast</button>
+            <button onclick="setFilter('missing')" id="filterBtnMissing" class="px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Missing Images Only</button>
+          </div>
+
+          <button onclick="closeInspection()" class="bg-slate-200 hover:bg-rose-100 hover:text-rose-700 text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Close current inspection">
+            <i class="fa-solid fa-xmark"></i> Close
+          </button>
+        </div>
+      </div>
+      <div id="castGrid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-5"></div>
+    </section>
+
     <!-- SHOW CARDS GRID -->
     <div id="showsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <!-- Initial empty state rendered on load -->
@@ -215,6 +249,9 @@
   let currentTab = null;
   let loadedShows = [];
   let checkedShows = getSafeCheckedShows();
+  let currentShow = null;
+  let allCast = [];
+  let currentFilter = 'all';
 
   // Safe localStorage parser
   function getSafeCheckedShows() {
@@ -518,7 +555,7 @@
 
     let filteredShows = shows.filter(show => {
       const isEmpty = !show.cast || show.cast.length === 0;
-      const hasMissingPhotos = show.cast && show.cast.some(item => !item.character || !item.character.image);
+      const hasMissingPhotos = show.cast && show.cast.some(item => !item.person?.image?.medium);
 
       if (onlyEmpty && !isEmpty) return false;
       if (onlyMissingPhotos && !hasMissingPhotos) return false;
@@ -540,7 +577,7 @@
     container.innerHTML = filteredShows.map(show => {
       const safeId = parseInt(show.id, 10);
       const isEmpty = !show.cast || show.cast.length === 0;
-      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.character || !item.character.image).length : 0;
+      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.person?.image?.medium).length : 0;
       const isChecked = !!checkedShows[safeId];
       const encodedTitle = encodeURIComponent(show.name);
       const tvmazeUrl = `https://www.tvmaze.com/shows/${safeId}`;
@@ -588,6 +625,9 @@
               <a href="${escapeHtml(tvmazeUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-emerald-700 font-semibold hover:underline flex items-center gap-1">
                 <i class="fa-solid fa-arrow-up-right-from-square"></i> View on TVmaze
               </a>
+              <button data-inspect-show-id="${safeId}" class="inspect-cast-btn text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-2 py-1 rounded-lg font-semibold transition flex items-center gap-1">
+                <i class="fa-solid fa-users"></i> Inspect Cast
+              </button>
               <a href="${escapeHtml(tvdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-700 font-semibold hover:underline">TVDB</a>
               <a href="${escapeHtml(tmdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-sky-700 font-semibold hover:underline">TMDB</a>
               <a href="${escapeHtml(imdbSearchUrl)}" target="_blank" rel="noopener noreferrer" class="text-xs text-amber-700 font-semibold hover:underline">IMDb</a>
@@ -616,6 +656,137 @@
       btn.addEventListener('click', (e) => {
         const url = e.currentTarget.getAttribute('data-copy-url');
         handleCopyClick(e.currentTarget, url);
+      });
+    });
+
+    container.querySelectorAll('.inspect-cast-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const showId = Number(e.currentTarget.getAttribute('data-inspect-show-id'));
+        const show = loadedShows.find(item => Number(item.id) === showId);
+        if (show) openCastInspector(show);
+      });
+    });
+  }
+
+  function openCastInspector(show) {
+    currentShow = show;
+    allCast = Array.isArray(show.cast) ? show.cast : [];
+    currentFilter = 'all';
+    renderShowBanner();
+    setFilter('all');
+    document.getElementById('showBanner').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderShowBanner() {
+    const banner = document.getElementById('showBanner');
+    banner.classList.remove('hidden');
+
+    document.getElementById('showPoster').src = currentShow.image?.medium || 'https://placehold.co/210x295/cbd5e1/475569?text=No+Cover';
+    document.getElementById('showTitle').innerText = currentShow.name || 'Untitled Show';
+    document.getElementById('showMeta').innerText = `${currentShow.network?.name || currentShow.webChannel?.name || 'Unknown Network'} \u2022 ${currentShow.premiered || 'N/A'}`;
+
+    const showNameEnc = encodeURIComponent(currentShow.name || '');
+    const tvmazeId = Number(currentShow.id);
+    const tvmazeUrl = `https://www.tvmaze.com/shows/${tvmazeId}`;
+    const tmdbSearch = `https://www.themoviedb.org/search?query=${showNameEnc}`;
+    const mdlSearch = `https://mydramalist.com/search?q=${showNameEnc}&adv=titles`;
+    const imdbSearch = `https://www.imdb.com/find/?q=${showNameEnc}&s=tt`;
+    const isAnime = currentShow.type === 'Animation' || (currentShow.genres || []).some(g => /anime/i.test(g));
+    document.getElementById('showExternalLinks').innerHTML = `
+      <a href="${tvmazeUrl}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">TVmaze #${tvmazeId}</a>
+      <a href="${tmdbSearch}" target="_blank" rel="noopener noreferrer" class="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded border border-sky-200">TMDB</a>
+      ${!isAnime ? `<a href="${mdlSearch}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">MDL</a>` : ''}
+      <a href="${imdbSearch}" target="_blank" rel="noopener noreferrer" class="text-amber-700 hover:underline bg-amber-50 px-2 py-0.5 rounded border border-amber-200">IMDb</a>
+    `;
+
+    document.getElementById('statTotal').innerText = allCast.length;
+    document.getElementById('statMissing').innerText = allCast.filter(c => !c.person?.image?.medium).length;
+  }
+
+  function setFilter(filter) {
+    currentFilter = filter;
+    const btnAll = document.getElementById('filterBtnAll');
+    const btnMissing = document.getElementById('filterBtnMissing');
+
+    if (filter === 'all') {
+      btnAll.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-sm transition';
+      btnMissing.className = 'px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition';
+    } else {
+      btnMissing.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-white text-rose-700 shadow-sm transition';
+      btnAll.className = 'px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition';
+    }
+
+    renderCastCards();
+  }
+
+  function closeInspection() {
+    currentShow = null;
+    allCast = [];
+    currentFilter = 'all';
+    document.getElementById('showBanner').classList.add('hidden');
+    document.getElementById('castGrid').innerHTML = '';
+
+    const showSearchInput = document.getElementById('showSearchInput');
+    if (showSearchInput) showSearchInput.value = '';
+  }
+
+  function renderCastCards() {
+    const container = document.getElementById('castGrid');
+    const uniquePeopleMap = new Map();
+
+    for (const item of allCast) {
+      if (!item.person?.id) continue;
+      if (!uniquePeopleMap.has(item.person.id)) {
+        uniquePeopleMap.set(item.person.id, { person: item.person, characters: [] });
+      }
+      if (item.character?.name && !uniquePeopleMap.get(item.person.id).characters.includes(item.character.name)) {
+        uniquePeopleMap.get(item.person.id).characters.push(item.character.name);
+      }
+    }
+
+    let list = Array.from(uniquePeopleMap.values());
+    if (currentFilter === 'missing') list = list.filter(entry => !entry.person.image?.medium);
+
+    if (list.length === 0) {
+      container.innerHTML = `<div class="col-span-full text-center py-10 bg-white rounded-2xl border border-slate-200 text-slate-400"><i class="fa-solid fa-circle-check text-3xl text-emerald-500 mb-2"></i><p class="text-sm font-bold text-slate-700">No cast members match the active filter.</p></div>`;
+      return;
+    }
+
+    const isAnime = currentShow.type === 'Animation' || (currentShow.genres || []).some(genre => /anime/i.test(genre));
+    container.innerHTML = list.map(entry => {
+      const person = entry.person;
+      const hasImage = !!person.image?.medium;
+      const actorName = escapeHtml(person.name);
+      const actorNameEncoded = encodeURIComponent(person.name);
+      const charNames = escapeHtml(entry.characters.join(', ') || 'Unknown character');
+      const personUrl = `https://www.tvmaze.com/people/${person.id}`;
+      const editUrl = `${personUrl}/edit`;
+      const mdlLink = `https://mydramalist.com/search?q=${actorNameEncoded}&adv=people`;
+      const tmdbLink = `https://www.themoviedb.org/search/person?query=${actorNameEncoded}`;
+      const imdbLink = `https://www.imdb.com/find/?q=${actorNameEncoded}&s=nm`;
+      const googleLink = `https://www.google.com/search?q=${actorNameEncoded}+portrait&tbm=isch`;
+      const image = hasImage ? escapeHtml(person.image.medium) : 'https://placehold.co/150x150/cbd5e1/475569?text=No+Image';
+
+      return `<div class="bg-white border ${hasImage ? 'border-slate-200' : 'border-rose-300 bg-rose-50/20'} rounded-2xl p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <img src="${image}" alt="${actorName}" class="w-16 h-16 rounded-xl object-cover bg-slate-200 shadow-sm shrink-0" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-1"><a href="${personUrl}" target="_blank" rel="noopener noreferrer" class="text-[10px] font-mono font-bold text-slate-500 hover:text-indigo-700 hover:underline">ID: #${person.id}</a><span class="px-2 py-0.5 text-[10px] font-bold rounded-md ${hasImage ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${hasImage ? 'Image OK' : 'Missing Image'}</span></div>
+            <h3 class="font-bold text-slate-900 text-sm truncate mt-0.5" title="${actorName}">${actorName}</h3>
+            <p class="text-xs text-slate-500 truncate" title="as ${charNames}">as <span class="font-medium text-slate-700">${charNames}</span></p>
+          </div>
+        </div>
+        <div class="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2.5">
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 text-xs"><span class="font-bold text-slate-500">Find on:</span><div class="flex items-center gap-2.5 font-bold"><a href="${tmdbLink}" target="_blank" rel="noopener noreferrer" class="text-sky-700 hover:underline">TMDB</a>${!isAnime ? `<a href="${mdlLink}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline">MDL</a>` : ''}<a href="${imdbLink}" target="_blank" rel="noopener noreferrer" class="text-amber-700 hover:underline">IMDb</a><a href="${googleLink}" target="_blank" rel="noopener noreferrer" class="text-slate-600 hover:underline">Google</a></div></div>
+          <div class="flex items-center gap-2"><a href="${editUrl}" target="_blank" rel="noopener noreferrer" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"><i class="fa-solid fa-pen-to-square"></i><span>Edit Person on TVmaze</span></a><button data-copy-actor="${actorNameEncoded}" class="copy-actor-btn bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold transition shrink-0" title="Copy actor name"><i class="fa-solid fa-copy"></i></button></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('.copy-actor-btn').forEach(button => {
+      button.addEventListener('click', () => {
+        copyTextToClipboard(decodeURIComponent(button.dataset.copyActor));
+        showToast(`Copied "${decodeURIComponent(button.dataset.copyActor)}" to clipboard!`);
       });
     });
   }
@@ -746,7 +917,7 @@
   function exportIssueList() {
     const issueShows = loadedShows.filter(show => {
       const isEmpty = !show.cast || show.cast.length === 0;
-      const hasMissingPhotos = show.cast && show.cast.some(item => !item.character || !item.character.image);
+      const hasMissingPhotos = show.cast && show.cast.some(item => !item.person?.image?.medium);
       return isEmpty || hasMissingPhotos;
     });
 
@@ -757,7 +928,7 @@
 
     const textLines = issueShows.map(show => {
       const isEmpty = !show.cast || show.cast.length === 0;
-      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.character || !item.character.image).length : 0;
+      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.person?.image?.medium).length : 0;
       let issueLabel = isEmpty ? '[EMPTY CAST]' : `[${missingPhotoCount} MISSING PHOTO(S)]`;
       return `${show.name} - ${issueLabel}: https://www.tvmaze.com/shows/${show.id}`;
     });

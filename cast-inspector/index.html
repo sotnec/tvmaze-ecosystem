@@ -41,7 +41,7 @@
             <input 
               type="text" 
               id="searchInput"
-              placeholder="Search show title..."
+              placeholder="Search title, TVmaze ID or link..."
               class="w-full bg-slate-100 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
               onkeyup="if(event.key === 'Enter') executeSearch()"
             />
@@ -166,8 +166,9 @@
       <div class="mb-4">
         <label for="mdlCastUrl" class="block text-xs font-semibold text-slate-600 mb-1">MyDramaList Cast URL</label>
         <div class="flex flex-col sm:flex-row gap-2">
-          <input type="url" id="mdlCastUrl" value="https://mydramalist.com/52301-art-on/cast"
+          <input type="url" id="mdlCastUrl" value=""
             placeholder="https://mydramalist.com/52301-art-on/cast"
+            onkeyup="if(event.key === 'Enter') loadMdlCastList()"
             class="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-emerald-500" />
           <button type="button" onclick="loadMdlCastList()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 shadow-sm">
             <i class="fa-solid fa-cloud-arrow-down"></i> Load Cast Table
@@ -176,7 +177,7 @@
         <p id="mdlCastStatus" class="text-[11px] text-slate-400 mt-1">Paste an MDL cast URL and load the actor / character table.</p>
       </div>
 
-      <div id="mdlCastTableWrapper" class="hidden overflow-x-auto mb-4 border border-slate-200 rounded-lg">
+      <div id="mdlCastTableWrapper" class="hidden overflow-x-auto mb-3 border border-slate-200 rounded-lg">
         <table class="w-full text-left text-sm">
           <thead class="bg-slate-50 border-b border-slate-200">
             <tr>
@@ -190,10 +191,25 @@
         </table>
       </div>
 
+      <div id="mdlCastActions" class="hidden flex flex-wrap items-center justify-between gap-2 pt-2">
+        <span id="mdlSelectedCount" class="text-xs font-semibold text-slate-500">0 selected</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="copyMdlCast('text')" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-copy"></i> Copy Selected
+          </button>
+          <button type="button" onclick="copyMdlCast('csv')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-csv"></i> Copy CSV
+          </button>
+          <button type="button" onclick="clearMdlCastTable()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg transition">
+            Clear
+          </button>
+        </div>
+      </div>
+
     </div>
 
     <!-- CAST INSPECTOR -->
-    <section id="showBanner" class="hidden mt-4 pt-4 border-t border-slate-100">
+    <section id="showBanner" class="hidden bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6">
       <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div class="flex items-center gap-4">
           <img id="showPoster" src="" alt="Poster" class="w-12 h-16 object-cover rounded-lg shadow-sm bg-slate-200 shrink-0" />
@@ -390,29 +406,87 @@
     return (showLang || '').toLowerCase() === selectedLang.toLowerCase();
   }
 
+  async function fetchJsonWithRetry(url, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const response = await fetch(url);
+      if (response.status === 429 && attempt < retries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        continue;
+      }
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+    throw new Error('Request failed after retries');
+  }
+
+  async function mapWithConcurrency(items, limit, worker) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    async function runWorker() {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await worker(items[index], index);
+      }
+    }
+
+    const workerCount = Math.min(limit, items.length);
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+    return results;
+  }
+
+  function getUniqueCastPeople(castList) {
+    const uniquePeopleMap = new Map();
+    for (const item of castList || []) {
+      if (!item.person?.id) continue;
+      if (!uniquePeopleMap.has(item.person.id)) {
+        uniquePeopleMap.set(item.person.id, { person: item.person, characters: [] });
+      }
+      if (item.character?.name && !uniquePeopleMap.get(item.person.id).characters.includes(item.character.name)) {
+        uniquePeopleMap.get(item.person.id).characters.push(item.character.name);
+      }
+    }
+    return Array.from(uniquePeopleMap.values());
+  }
+
+  async function fetchShowWithCast(show) {
+    try {
+      const castData = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(show.id)}?embed=cast`);
+      return { ...show, cast: castData._embedded?.cast || [] };
+    } catch (e) {
+      return { ...show, cast: [] };
+    }
+  }
+
+  function hasActiveCatalogFilters() {
+    const lang = document.getElementById('langSelect')?.value || 'ALL';
+    const type = document.getElementById('typeSelect')?.value || 'ALL';
+    const year = document.getElementById('yearSelect')?.value || 'ALL';
+    return lang !== 'ALL' || type !== 'ALL' || year !== 'ALL';
+  }
+
   async function fetchPopularShows() {
     showLoadingState("Loading popular TVmaze shows...");
     try {
-      const response = await fetch('https://api.tvmaze.com/shows?page=0');
-      if (!response.ok) throw new Error("Failed to fetch page 0");
-      const data = await response.json();
-      
-      let filtered = data.filter(s => 
-        matchesSelectedLanguage(s.language) &&
-        matchesSelectedType(s.type) &&
-        matchesSelectedYear(s.premiered)
-      ).slice(0, 24);
+      const maxPages = hasActiveCatalogFilters() ? 6 : 1;
+      const filtered = [];
 
-      const fullShows = await Promise.all(filtered.map(async (show) => {
-        try {
-          const castRes = await fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(show.id)}?embed=cast`);
-          const castData = await castRes.json();
-          return { ...show, cast: castData._embedded?.cast || [] };
-        } catch(e) {
-          return { ...show, cast: [] };
+      for (let page = 0; page < maxPages && filtered.length < 24; page++) {
+        const data = await fetchJsonWithRetry(`https://api.tvmaze.com/shows?page=${page}`);
+        const matches = data.filter(s =>
+          matchesSelectedLanguage(s.language) &&
+          matchesSelectedType(s.type) &&
+          matchesSelectedYear(s.premiered)
+        );
+        for (const show of matches) {
+          filtered.push(show);
+          if (filtered.length >= 24) break;
         }
-      }));
+      }
 
+      const fullShows = await mapWithConcurrency(filtered, 4, fetchShowWithCast);
       renderShowCards(fullShows);
     } catch (err) {
       console.error(err);
@@ -423,30 +497,25 @@
   async function fetchNewlyAddedShows() {
     showLoadingState("Checking newly updated entries...");
     try {
-      const res = await fetch('https://api.tvmaze.com/updates/shows');
-      const updates = await res.json();
-      
+      const updates = await fetchJsonWithRetry('https://api.tvmaze.com/updates/shows');
       const recentIds = Object.keys(updates).slice(-40).reverse();
       const fetchedShows = [];
 
       for (const id of recentIds) {
         if (fetchedShows.length >= 18) break;
         try {
-          const showRes = await fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(id)}?embed=cast`);
-          if (showRes.ok) {
-            const show = await showRes.json();
-            if (
-              matchesSelectedLanguage(show.language) &&
-              matchesSelectedType(show.type) &&
-              matchesSelectedYear(show.premiered)
-            ) {
-              fetchedShows.push({
-                ...show,
-                cast: show._embedded?.cast || []
-              });
-            }
+          const show = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(id)}?embed=cast`);
+          if (
+            matchesSelectedLanguage(show.language) &&
+            matchesSelectedType(show.type) &&
+            matchesSelectedYear(show.premiered)
+          ) {
+            fetchedShows.push({
+              ...show,
+              cast: show._embedded?.cast || []
+            });
           }
-        } catch(e) {}
+        } catch (e) {}
       }
 
       renderShowCards(fetchedShows);
@@ -468,37 +537,25 @@
       attempts++;
       try {
         const randomPage = Math.floor(Math.random() * 250);
-        const pageRes = await fetch(`https://api.tvmaze.com/shows?page=${randomPage}`);
-        
-        if (pageRes.status === 429) {
-          await new Promise(r => setTimeout(r, 1000));
-          continue;
-        }
+        const showsOnPage = await fetchJsonWithRetry(`https://api.tvmaze.com/shows?page=${randomPage}`);
+        const shuffled = showsOnPage.sort(() => 0.5 - Math.random());
 
-        if (pageRes.ok) {
-          const showsOnPage = await pageRes.json();
-          const shuffled = showsOnPage.sort(() => 0.5 - Math.random());
-          
-          for (const show of shuffled) {
-            if (foundShows.length >= count) break;
-            
-            if (
-              matchesSelectedLanguage(show.language) &&
-              matchesSelectedType(show.type) &&
-              matchesSelectedYear(show.premiered)
-            ) {
-              try {
-                const castRes = await fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(show.id)}?embed=cast`);
-                if (castRes.ok) {
-                  const fullShow = await castRes.json();
-                  foundShows.push({
-                    ...fullShow,
-                    cast: fullShow._embedded?.cast || []
-                  });
-                }
-              } catch (e) {
-                foundShows.push({ ...show, cast: [] });
-              }
+        for (const show of shuffled) {
+          if (foundShows.length >= count) break;
+
+          if (
+            matchesSelectedLanguage(show.language) &&
+            matchesSelectedType(show.type) &&
+            matchesSelectedYear(show.premiered)
+          ) {
+            try {
+              const fullShow = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(show.id)}?embed=cast`);
+              foundShows.push({
+                ...fullShow,
+                cast: fullShow._embedded?.cast || []
+              });
+            } catch (e) {
+              foundShows.push({ ...show, cast: [] });
             }
           }
         }
@@ -520,27 +577,30 @@
 
     showLoadingState(`Searching TVmaze for "${query}"...`);
     try {
-      const res = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`);
-      const results = await res.json();
-      
-      const searchedShows = await Promise.all(results.map(async (item) => {
-        const show = item.show;
-        try {
-          const castRes = await fetch(`https://api.tvmaze.com/shows/${encodeURIComponent(show.id)}?embed=cast`);
-          const castData = await castRes.json();
-          return { ...show, cast: castData._embedded?.cast || [] };
-        } catch(e) {
-          return { ...show, cast: [] };
-        }
-      }));
+      const urlMatch = query.match(/tvmaze\.com\/shows\/(\d+)/i);
+      if (urlMatch || /^\d+$/.test(query)) {
+        const showId = urlMatch ? urlMatch[1] : query;
+        const fullShow = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}?embed=cast`);
+        const singleList = [{ ...fullShow, cast: fullShow._embedded?.cast || [] }].filter(s =>
+          matchesSelectedLanguage(s.language) &&
+          matchesSelectedType(s.type) &&
+          matchesSelectedYear(s.premiered)
+        );
+        renderShowCards(singleList);
+        return;
+      }
 
-      const filtered = searchedShows.filter(s => 
-        matchesSelectedLanguage(s.language) &&
-        matchesSelectedType(s.type) &&
-        matchesSelectedYear(s.premiered)
-      );
+      const results = await fetchJsonWithRetry(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`);
+      const matchingShows = results
+        .map(item => item.show)
+        .filter(s =>
+          matchesSelectedLanguage(s.language) &&
+          matchesSelectedType(s.type) &&
+          matchesSelectedYear(s.premiered)
+        );
 
-      renderShowCards(filtered);
+      const searchedShows = await mapWithConcurrency(matchingShows, 4, fetchShowWithCast);
+      renderShowCards(searchedShows);
     } catch (err) {
       console.error(err);
       showErrorState("Error performing search.");
@@ -554,8 +614,9 @@
     const onlyMissingPhotos = document.getElementById('onlyMissingPhotosToggle').checked;
 
     let filteredShows = shows.filter(show => {
-      const isEmpty = !show.cast || show.cast.length === 0;
-      const hasMissingPhotos = show.cast && show.cast.some(item => !item.person?.image?.medium);
+      const uniqueCast = getUniqueCastPeople(show.cast);
+      const isEmpty = uniqueCast.length === 0;
+      const hasMissingPhotos = uniqueCast.some(entry => !entry.person?.image?.medium);
 
       if (onlyEmpty && !isEmpty) return false;
       if (onlyMissingPhotos && !hasMissingPhotos) return false;
@@ -576,8 +637,9 @@
 
     container.innerHTML = filteredShows.map(show => {
       const safeId = parseInt(show.id, 10);
-      const isEmpty = !show.cast || show.cast.length === 0;
-      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.person?.image?.medium).length : 0;
+      const uniqueCast = getUniqueCastPeople(show.cast);
+      const isEmpty = uniqueCast.length === 0;
+      const missingPhotoCount = uniqueCast.filter(entry => !entry.person?.image?.medium).length;
       const isChecked = !!checkedShows[safeId];
       const encodedTitle = encodeURIComponent(show.name);
       const tvmazeUrl = `https://www.tvmaze.com/shows/${safeId}`;
@@ -595,7 +657,7 @@
       } else if (missingPhotoCount > 0) {
         statusBadge = `<span class="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded font-bold border border-amber-200"><i class="fa-solid fa-image mr-1"></i>${missingPhotoCount} Missing Photo(s)</span>`;
       } else {
-        statusBadge = `<span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-bold border border-emerald-200"><i class="fa-solid fa-check mr-1"></i>Complete (${show.cast.length})</span>`;
+        statusBadge = `<span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-bold border border-emerald-200"><i class="fa-solid fa-check mr-1"></i>Complete (${uniqueCast.length})</span>`;
       }
 
       return `
@@ -693,14 +755,15 @@
     const imdbSearch = `https://www.imdb.com/find/?q=${showNameEnc}&s=tt`;
     const isAnime = currentShow.type === 'Animation' || (currentShow.genres || []).some(g => /anime/i.test(g));
     document.getElementById('showExternalLinks').innerHTML = `
-      <a href="${tvmazeUrl}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">TVmaze #${tvmazeId}</a>
-      <a href="${tmdbSearch}" target="_blank" rel="noopener noreferrer" class="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded border border-sky-200">TMDB</a>
-      ${!isAnime ? `<a href="${mdlSearch}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">MDL</a>` : ''}
-      <a href="${imdbSearch}" target="_blank" rel="noopener noreferrer" class="text-amber-700 hover:underline bg-amber-50 px-2 py-0.5 rounded border border-amber-200">IMDb</a>
+      <a href="${escapeHtml(tvmazeUrl)}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">TVmaze #${tvmazeId}</a>
+      <a href="${escapeHtml(tmdbSearch)}" target="_blank" rel="noopener noreferrer" class="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded border border-sky-200">TMDB</a>
+      ${!isAnime ? `<a href="${escapeHtml(mdlSearch)}" target="_blank" rel="noopener noreferrer" class="text-indigo-700 hover:underline bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">MDL</a>` : ''}
+      <a href="${escapeHtml(imdbSearch)}" target="_blank" rel="noopener noreferrer" class="text-amber-700 hover:underline bg-amber-50 px-2 py-0.5 rounded border border-amber-200">IMDb</a>
     `;
 
-    document.getElementById('statTotal').innerText = allCast.length;
-    document.getElementById('statMissing').innerText = allCast.filter(c => !c.person?.image?.medium).length;
+    const uniquePeople = getUniqueCastPeople(allCast);
+    document.getElementById('statTotal').innerText = uniquePeople.length;
+    document.getElementById('statMissing').innerText = uniquePeople.filter(entry => !entry.person?.image?.medium).length;
   }
 
   function setFilter(filter) {
@@ -725,26 +788,11 @@
     currentFilter = 'all';
     document.getElementById('showBanner').classList.add('hidden');
     document.getElementById('castGrid').innerHTML = '';
-
-    const showSearchInput = document.getElementById('showSearchInput');
-    if (showSearchInput) showSearchInput.value = '';
   }
 
   function renderCastCards() {
     const container = document.getElementById('castGrid');
-    const uniquePeopleMap = new Map();
-
-    for (const item of allCast) {
-      if (!item.person?.id) continue;
-      if (!uniquePeopleMap.has(item.person.id)) {
-        uniquePeopleMap.set(item.person.id, { person: item.person, characters: [] });
-      }
-      if (item.character?.name && !uniquePeopleMap.get(item.person.id).characters.includes(item.character.name)) {
-        uniquePeopleMap.get(item.person.id).characters.push(item.character.name);
-      }
-    }
-
-    let list = Array.from(uniquePeopleMap.values());
+    let list = getUniqueCastPeople(allCast);
     if (currentFilter === 'missing') list = list.filter(entry => !entry.person.image?.medium);
 
     if (list.length === 0) {
@@ -812,14 +860,14 @@
     const status = document.getElementById('mdlCastStatus');
     const tableWrapper = document.getElementById('mdlCastTableWrapper');
     const tableBody = document.getElementById('mdlCastTableBody');
+    const actionsBar = document.getElementById('mdlCastActions');
 
     let mdlUrl;
     try {
       mdlUrl = new URL(input.value.trim());
       if (!/(^|\.)mydramalist\.com$/i.test(mdlUrl.hostname)) throw new Error('invalid-host');
-      if (!mdlUrl.pathname.endsWith('/cast')) {
-        mdlUrl.pathname = `${mdlUrl.pathname.replace(/\/$/, '')}/cast`;
-      }
+      const normalizedPath = mdlUrl.pathname.replace(/\/+$/, '');
+      mdlUrl.pathname = normalizedPath.endsWith('/cast') ? normalizedPath : `${normalizedPath}/cast`;
     } catch (error) {
       status.textContent = 'Enter a valid MyDramaList cast URL.';
       status.className = 'text-[11px] text-rose-500 mt-1';
@@ -829,6 +877,7 @@
     status.textContent = 'Loading the MDL cast list...';
     status.className = 'text-[11px] text-indigo-600 mt-1';
     tableWrapper.classList.add('hidden');
+    actionsBar.classList.add('hidden');
     tableBody.innerHTML = '';
 
     const readerUrl = `https://r.jina.ai/https://${mdlUrl.hostname}${mdlUrl.pathname}${mdlUrl.search}`;
@@ -851,13 +900,26 @@
         `).join('');
 
         tableWrapper.classList.remove('hidden');
+        actionsBar.classList.remove('hidden');
+
         const selectAll = document.getElementById('mdlCastSelectAll');
         selectAll.checked = true;
         selectAll.onchange = () => {
           tableBody.querySelectorAll('.mdl-cast-select').forEach(checkbox => {
             checkbox.checked = selectAll.checked;
           });
+          updateMdlSelectedCount();
         };
+
+        tableBody.querySelectorAll('.mdl-cast-select').forEach(checkbox => {
+          checkbox.addEventListener('change', () => {
+            const allBoxes = Array.from(tableBody.querySelectorAll('.mdl-cast-select'));
+            selectAll.checked = allBoxes.length > 0 && allBoxes.every(box => box.checked);
+            updateMdlSelectedCount();
+          });
+        });
+
+        updateMdlSelectedCount();
         status.textContent = `${entries.length} cast records loaded into the table.`;
         status.className = 'text-[11px] text-emerald-600 mt-1';
       })
@@ -866,6 +928,48 @@
         status.textContent = 'Could not load the MDL list. Check the URL and try again.';
         status.className = 'text-[11px] text-rose-500 mt-1';
       });
+  }
+
+  function updateMdlSelectedCount() {
+    const rows = document.querySelectorAll('#mdlCastTableBody .mdl-cast-row');
+    const selected = Array.from(rows).filter(row => row.querySelector('.mdl-cast-select')?.checked).length;
+    document.getElementById('mdlSelectedCount').textContent = `${selected} of ${rows.length} selected`;
+  }
+
+  function getSelectedMdlCastRows() {
+    const rows = document.querySelectorAll('#mdlCastTableBody .mdl-cast-row');
+    return Array.from(rows)
+      .filter(row => row.querySelector('.mdl-cast-select')?.checked)
+      .map(row => ({
+        actor: row.querySelector('.mdl-cast-actor')?.value.trim() || '',
+        character: row.querySelector('.mdl-cast-character')?.value.trim() || '',
+        role: row.querySelector('.mdl-cast-role')?.value.trim() || ''
+      }))
+      .filter(entry => entry.actor || entry.character);
+  }
+
+  function copyMdlCast(format) {
+    const selected = getSelectedMdlCastRows();
+    if (selected.length === 0) {
+      showToast('Select at least one cast row to copy.', 'fa-circle-info text-amber-400');
+      return;
+    }
+
+    const csvCell = value => `"${String(value).replace(/"/g, '""')}"`;
+    const output = format === 'csv'
+      ? ['Actor,Character,Role', ...selected.map(item => `${csvCell(item.actor)},${csvCell(item.character)},${csvCell(item.role)}`)].join('\n')
+      : selected.map(item => `${item.actor} - ${item.character}${item.role ? ` (${item.role})` : ''}`).join('\n');
+
+    copyTextToClipboard(output);
+    showToast(`Copied ${selected.length} MDL cast row(s) as ${format.toUpperCase()}!`);
+  }
+
+  function clearMdlCastTable() {
+    document.getElementById('mdlCastTableBody').innerHTML = '';
+    document.getElementById('mdlCastTableWrapper').classList.add('hidden');
+    document.getElementById('mdlCastActions').classList.add('hidden');
+    document.getElementById('mdlCastStatus').textContent = 'Paste an MDL cast URL and load the actor / character table.';
+    document.getElementById('mdlCastStatus').className = 'text-[11px] text-slate-400 mt-1';
   }
 
   function parseMdlCastMarkdown(markdown) {
@@ -916,8 +1020,9 @@
 
   function exportIssueList() {
     const issueShows = loadedShows.filter(show => {
-      const isEmpty = !show.cast || show.cast.length === 0;
-      const hasMissingPhotos = show.cast && show.cast.some(item => !item.person?.image?.medium);
+      const uniqueCast = getUniqueCastPeople(show.cast);
+      const isEmpty = uniqueCast.length === 0;
+      const hasMissingPhotos = uniqueCast.some(entry => !entry.person?.image?.medium);
       return isEmpty || hasMissingPhotos;
     });
 
@@ -927,8 +1032,9 @@
     }
 
     const textLines = issueShows.map(show => {
-      const isEmpty = !show.cast || show.cast.length === 0;
-      const missingPhotoCount = show.cast ? show.cast.filter(item => !item.person?.image?.medium).length : 0;
+      const uniqueCast = getUniqueCastPeople(show.cast);
+      const isEmpty = uniqueCast.length === 0;
+      const missingPhotoCount = uniqueCast.filter(entry => !entry.person?.image?.medium).length;
       let issueLabel = isEmpty ? '[EMPTY CAST]' : `[${missingPhotoCount} MISSING PHOTO(S)]`;
       return `${show.name} - ${issueLabel}: https://www.tvmaze.com/shows/${show.id}`;
     });

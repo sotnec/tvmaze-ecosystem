@@ -72,6 +72,12 @@
           <button id="filterMissingDate" onclick="setFilter('missingDate')" class="px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800">
             <i class="fa-solid fa-calendar-xmark text-sky-500 mr-1"></i> Missing Date
           </button>
+          <button id="filterMissingRuntime" onclick="setFilter('missingRuntime')" class="px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800">
+            <i class="fa-solid fa-clock text-indigo-500 mr-1"></i> Missing Runtime
+          </button>
+          <button id="filterMissingImage" onclick="setFilter('missingImage')" class="px-3 py-1 text-xs font-bold rounded-lg transition text-slate-500 hover:text-slate-800">
+            <i class="fa-solid fa-image text-teal-500 mr-1"></i> Missing Image
+          </button>
         </div>
 
         <!-- Language Select -->
@@ -143,9 +149,17 @@
               <h2 id="showTitle" class="text-2xl font-bold text-slate-900 leading-tight">Show Title</h2>
               <p id="showMeta" class="text-xs text-slate-500 font-medium">Network • Premiered • Language</p>
             </div>
-            <a id="tvmazeLink" href="#" target="_blank" rel="noopener noreferrer" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-3 py-1.5 rounded-lg transition hover:bg-emerald-100 flex items-center gap-1.5">
-              <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Episode Editor on TVmaze
-            </a>
+            <div class="flex flex-wrap items-center gap-2">
+              <a id="inspectCastLink" href="#" class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold px-3 py-1.5 rounded-lg transition hover:bg-indigo-100 flex items-center gap-1.5">
+                <i class="fa-solid fa-users"></i> Inspect Cast
+              </a>
+              <button type="button" onclick="exportEpisodeIssues()" class="text-xs bg-slate-800 hover:bg-slate-700 text-white font-semibold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                <i class="fa-solid fa-file-export"></i> Export Issues
+              </button>
+              <a id="tvmazeLink" href="#" target="_blank" rel="noopener noreferrer" class="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold px-3 py-1.5 rounded-lg transition hover:bg-emerald-100 flex items-center gap-1.5">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Episode Editor on TVmaze
+              </a>
+            </div>
           </div>
 
           <!-- Audit Summary Pills -->
@@ -190,42 +204,73 @@
 
   </main>
 
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+    <span id="toastMsg" class="text-xs font-medium">Copied!</span>
+  </div>
+
   <!-- FOOTER -->
   <footer class="bg-white border-t border-slate-200 text-center py-4 text-xs text-slate-500 mt-auto">
     <p>Data provided by <a href="https://www.tvmaze.com/api" target="_blank" rel="noopener noreferrer" class="underline hover:text-purple-700">TVmaze API</a>. Tool built for episode summary auditing.</p>
   </footer>
 
   <!-- JAVASCRIPT LOGIC -->
+  <script src="../shared/tvmaze-utils.js"></script>
   <script>
+    const {
+      escapeHtml,
+      copyTextToClipboard,
+      showToast,
+      fetchJsonWithRetry,
+      matchesSelectedLanguage,
+      matchesSelectedType,
+      matchesSelectedYear,
+      getQueryParam
+    } = window.TvmazeUtils;
+
     let currentShow = null;
     let allEpisodes = [];
     let activeFilter = 'all';
+
+    window.onload = function() {
+      const initialQuery = getQueryParam('showId') || getQueryParam('q');
+      if (initialQuery) {
+        document.getElementById('showSearchInput').value = initialQuery;
+        executeShowAudit();
+      }
+    };
 
     function isMissingSummary(ep) {
       return !ep.summary || ep.summary.replace(/<[^>]*>?/gm, '').trim() === '';
     }
 
     function isGenericTitle(ep) {
-      return !ep.name || /^Episode\s+\d+$/i.test(ep.name.trim());
+      const name = (ep.name || '').trim();
+      if (!name) return true;
+      return /^(Episode|Ep\.?|Bölüm)\s*#?\d+$/i.test(name) || /^(TBA|TBD|#\d+)$/i.test(name);
     }
 
     function isMissingAirdate(ep) {
       return !ep.airdate || ep.airdate.trim() === '';
     }
 
-    async function fetchJsonWithRetry(url, retries = 2) {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        const response = await fetch(url);
-        if (response.status === 429 && attempt < retries) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-          continue;
-        }
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        return response.json();
-      }
-      throw new Error('Request failed after retries');
+    function isMissingRuntime(ep) {
+      return !ep.runtime || Number(ep.runtime) <= 0;
+    }
+
+    function isMissingEpisodeImage(ep) {
+      return !ep.image || !ep.image.medium;
+    }
+
+    async function loadShowById(showId) {
+      document.getElementById('showBanner').classList.add('hidden');
+      showLoadingState(`Loading episodes for TVmaze #${showId}...`);
+      currentShow = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}?embed=episodes`);
+      allEpisodes = currentShow._embedded?.episodes || [];
+      renderShowBanner();
+      populateSeasonDropdown();
+      renderEpisodes();
     }
 
     async function executeShowAudit() {
@@ -236,21 +281,34 @@
       showLoadingState(`Searching TVmaze for "${query}"...`);
 
       try {
-        let showId = query;
         const urlMatch = query.match(/tvmaze\.com\/shows\/(\d+)/i);
         if (urlMatch && urlMatch[1]) {
-          showId = urlMatch[1];
-        } else if (!/^\d+$/.test(query)) {
-          const showData = await fetchJsonWithRetry(`https://api.tvmaze.com/singlesearch/shows?q=${encodeURIComponent(query)}`);
-          showId = showData.id;
+          await loadShowById(urlMatch[1]);
+          return;
+        }
+        if (/^\d+$/.test(query)) {
+          await loadShowById(query);
+          return;
         }
 
-        currentShow = await fetchJsonWithRetry(`https://api.tvmaze.com/shows/${encodeURIComponent(showId)}?embed=episodes`);
-        allEpisodes = currentShow._embedded?.episodes || [];
+        const results = await fetchJsonWithRetry(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`);
+        const matches = results
+          .map(item => item.show)
+          .filter(s =>
+            matchesSelectedLanguage(s.language) &&
+            matchesSelectedType(s.type) &&
+            matchesSelectedYear(s.premiered)
+          );
 
-        renderShowBanner();
-        populateSeasonDropdown();
-        renderEpisodes();
+        if (matches.length === 0) {
+          throw new Error('No matching shows');
+        }
+        if (matches.length === 1) {
+          await loadShowById(matches[0].id);
+          return;
+        }
+
+        renderShowDisambiguation(matches, query);
       } catch (err) {
         currentShow = null;
         allEpisodes = [];
@@ -259,31 +317,29 @@
       }
     }
 
-    function matchesSelectedLanguage(showLang) {
-      const selectedLang = document.getElementById('langSelect')?.value || 'ALL';
-      if (selectedLang === 'ALL') return true;
-      return (showLang || '').toLowerCase() === selectedLang.toLowerCase();
-    }
-
-    function matchesSelectedType(showType) {
-      const selectedType = document.getElementById('typeSelect')?.value || 'ALL';
-      if (selectedType === 'ALL') return true;
-      return (showType || '').toLowerCase() === selectedType.toLowerCase();
-    }
-
-    function matchesSelectedYear(premieredDate) {
-      const selectedEra = document.getElementById('yearSelect')?.value || 'ALL';
-      if (selectedEra === 'ALL') return true;
-      if (!premieredDate) return false;
-
-      const year = parseInt(premieredDate.substring(0, 4), 10);
-      if (isNaN(year)) return false;
-
-      if (selectedEra === '2020') return year >= 2020;
-      if (selectedEra === '2010') return year >= 2010 && year <= 2019;
-      if (selectedEra === '2000') return year >= 2000 && year <= 2009;
-      if (selectedEra === 'OLDER') return year < 2000;
-      return true;
+    function renderShowDisambiguation(shows, query) {
+      currentShow = null;
+      allEpisodes = [];
+      const container = document.getElementById('episodesContainer');
+      container.innerHTML = `
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-800 mb-3">
+            Multiple matches found for "${escapeHtml(query)}" — select a show to audit:
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            ${shows.slice(0, 9).map(show => `
+              <button type="button" onclick="loadShowById(${Number(show.id)})" class="text-left p-3 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/40 transition flex items-center gap-3">
+                <img src="${escapeHtml(show.image?.medium || 'https://placehold.co/84x118/cbd5e1/475569?text=No+Cover')}" alt="${escapeHtml(show.name)}" class="w-12 h-16 object-cover rounded-lg bg-slate-200 shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-bold text-sm text-slate-900 truncate">${escapeHtml(show.name)}</div>
+                  <div class="text-xs text-slate-500 truncate">${escapeHtml(show.language || 'Unknown')} • ${escapeHtml(show.premiered ? show.premiered.substring(0, 4) : 'N/A')}</div>
+                  <div class="text-[11px] font-mono text-purple-600 mt-0.5">#${Number(show.id)}</div>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
     }
 
     async function auditRandomShow() {
@@ -348,6 +404,7 @@
       document.getElementById('showTitle').innerText = currentShow.name;
       document.getElementById('showMeta').innerText = `${currentShow.network?.name || currentShow.webChannel?.name || 'Unknown Channel'} • ${currentShow.premiered || 'N/A'} • ${currentShow.language || 'Unknown'}`;
       document.getElementById('tvmazeLink').href = `https://www.tvmaze.com/shows/${currentShow.id}/episodes`;
+      document.getElementById('inspectCastLink').href = `../cast-inspector/index.html?showId=${currentShow.id}`;
 
       const externalLinksHtml = `
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-3 border-t border-slate-100">
@@ -398,7 +455,9 @@
         all: 'filterAll',
         missingSummary: 'filterMissingSummary',
         missingTitle: 'filterMissingTitle',
-        missingDate: 'filterMissingDate'
+        missingDate: 'filterMissingDate',
+        missingRuntime: 'filterMissingRuntime',
+        missingImage: 'filterMissingImage'
       };
 
       Object.entries(filterButtons).forEach(([key, id]) => {
@@ -426,6 +485,8 @@
         if (activeFilter === 'missingSummary' && !isMissingSummary(ep)) return false;
         if (activeFilter === 'missingTitle' && !isGenericTitle(ep)) return false;
         if (activeFilter === 'missingDate' && !isMissingAirdate(ep)) return false;
+        if (activeFilter === 'missingRuntime' && !isMissingRuntime(ep)) return false;
+        if (activeFilter === 'missingImage' && !isMissingEpisodeImage(ep)) return false;
         return true;
       });
 
@@ -457,12 +518,18 @@
                   const missingSummary = isMissingSummary(ep);
                   const isUntitled = isGenericTitle(ep);
                   const missingDate = isMissingAirdate(ep);
+                  const missingRuntime = isMissingRuntime(ep);
+                  const missingImage = isMissingEpisodeImage(ep);
                   const cleanSummary = !missingSummary ? ep.summary.replace(/<[^>]*>?/gm, '').trim() : 'No summary provided.';
                   const epCode = `S${ep.season ?? '?'}${ep.number !== null && ep.number !== undefined ? `E${ep.number}` : ' Special'}`;
 
                   return `
                     <tr class="hover:bg-slate-50/80 transition">
-                      <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">${escapeHtml(epCode)}</td>
+                      <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">
+                        ${escapeHtml(epCode)}
+                        ${missingRuntime ? '<span class="block text-[10px] text-indigo-600 font-semibold">No Runtime</span>' : ''}
+                        ${missingImage ? '<span class="block text-[10px] text-teal-600 font-semibold">No Image</span>' : ''}
+                      </td>
                       <td class="px-4 py-3 font-semibold ${isUntitled ? 'text-rose-600' : 'text-slate-900'}">
                         ${escapeHtml(ep.name || 'Untitled')}
                         ${isUntitled ? '<span class="ml-2 text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold">Generic Title</span>' : ''}
@@ -490,6 +557,36 @@
       `;
     }
 
+    function exportEpisodeIssues() {
+      if (!currentShow || allEpisodes.length === 0) {
+        showToast('Load a show first to export episode issues.', 'fa-circle-info text-amber-400');
+        return;
+      }
+
+      const lines = allEpisodes
+        .map(ep => {
+          const flags = [];
+          if (isMissingSummary(ep)) flags.push('Missing Summary');
+          if (isGenericTitle(ep)) flags.push('Generic Title');
+          if (isMissingAirdate(ep)) flags.push('Missing Date');
+          if (isMissingRuntime(ep)) flags.push('Missing Runtime');
+          if (isMissingEpisodeImage(ep)) flags.push('Missing Image');
+          if (flags.length === 0) return null;
+
+          const epCode = `S${ep.season ?? '?'}${ep.number !== null && ep.number !== undefined ? `E${ep.number}` : ' Special'}`;
+          return `${currentShow.name} ${epCode} [${flags.join(', ')}]: https://www.tvmaze.com/episodes/${ep.id}/edit`;
+        })
+        .filter(Boolean);
+
+      if (lines.length === 0) {
+        showToast('No episode issues found to export.', 'fa-circle-info text-amber-400');
+        return;
+      }
+
+      copyTextToClipboard(lines.join('\n'));
+      showToast(`Copied ${lines.length} episode issue(s) to clipboard!`);
+    }
+
     function showLoadingState(msg) {
       document.getElementById('episodesContainer').innerHTML = `
         <div class="text-center py-16 bg-white rounded-2xl border border-slate-200">
@@ -506,16 +603,6 @@
           <p class="text-sm font-medium">${escapeHtml(msg)}</p>
         </div>
       `;
-    }
-
-    function escapeHtml(str) {
-      if (str === null || str === undefined) return '';
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
     }
   </script>
 </body>
